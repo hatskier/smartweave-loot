@@ -1,10 +1,10 @@
 <template>
   <div>
 
-    <div class="notification warning">
+    <!-- <div class="notification warning">
       Viewblock may display incorrect state because of caching and incorrect interactions ordering.
       See the <a href="/#/correct-loot-contract-state">latest and correct state in our app</a>
-    </div>
+    </div> -->
 
     <div v-if="address" class="address-container notification">
       Your address:
@@ -26,16 +26,48 @@
 
     </div>
 
-    <div v-if="sendingTx" class="tx-sending notification">
+    <!-- <div v-if="sendingTx" class="tx-sending notification">
       Your transaction has been sent. Please wait for about 20 minutes for it to be confirmed.
       You can close this page and come back any time. It also shoud appear on
       <a :href="'https://viewblock.io/arweave/address/' + address" target="_blank">
         Viewblock
       </a>
       in 20 minutes
+    </div> -->
+
+    <div v-if="walletLoaded" class="generate-many-button-container">
+      <v-btn
+        outlined
+        width="450"
+        @click="generateManyLoots()"
+      >
+        Generate many loots
+      </v-btn>
     </div>
 
-    <div v-if="walletLoaded" class="generate-button-container">
+    <div class="transactions" v-if="walletLoaded && address && pendingTransactions && pendingTransactions.length > 0">
+      <h2>Pending transactions</h2>
+      <p class="small-notice">
+        The transactions below should appear on Viewblock in ~20 minutes.
+      </p>
+      <div v-if="loadingTransactions">
+        Loading transactions...
+      </div>
+      <div v-for="txId in pendingTransactions" :key="txId" class="transaction">
+        <div class="transaction-id">
+          <a target="_blank" :href="'https://viewblock.io/arweave/tx/' + txId">
+            {{ txId }}
+          </a>
+        </div>
+        <div class="transaction-status">
+          <div>
+            pending
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- <div v-if="walletLoaded" class="generate-button-container">
       <v-btn
         outlined
         width="450"
@@ -43,7 +75,7 @@
       >
         Generate your loot
       </v-btn>
-    </div>
+    </div> -->
 
     <div v-if="walletLoaded" class="my-assets">
       <h2>My assets</h2>
@@ -93,6 +125,7 @@ import { mapState, mapActions } from 'vuex'
 import item from '@/components/Asset.vue'
 import { run } from 'ar-gql'
 import deployedContracts from '@/deployed-contracts.json'
+import Vue from 'vue';
 
 const LAST_BLOCKS_TO_CHECK = 30000
 
@@ -112,6 +145,8 @@ export default {
       })),
       sendingTx: false,
       userTransactionIds: [],
+      // pendingTransactionIds: {},
+      pendingTransactions: [],
     }
   },
 
@@ -132,6 +167,16 @@ export default {
         this.connectToArconnect()
         this.$timer.stop('checkArConnect')
       }
+    },
+
+    txStatusForId(txId) {
+      if (this.validity[txId]) {
+        return 'success'
+      }
+      // if (this.pendingTransactionIds[txId]) {
+      //   return 'pending'
+      // }
+      return 'failed'
     },
 
     async loadUserTransactions() {
@@ -182,6 +227,29 @@ export default {
       await this.contract.writeInteraction({
         function: 'generate'
       })
+    },
+
+    async generateManyLoots() {
+      const txCount = Number(prompt("How many 'generate' transations do you want to send. Max: 100"))
+      if (isNaN(txCount)) {
+        alert(txCount + ' is not a valid number')
+        return
+      }
+      if (txCount <= 0 || txCount > 100) {
+        alert('The number shoud be greater than 0 and less than 101');
+        return
+      }
+      for (let i = 0; i < txCount; i++) {
+        const txId = await this.contract.writeInteraction({
+          function: 'generate',
+          data: {
+            ranomizer: Math.random(),
+          },
+        })
+        // this.userTransactionIds = [txId].concat([...this.userTransactionIds])
+        this.pendingTransactions = [txId].concat([...this.pendingTransactions])
+        // Vue.set('pendingTransactionIds', txId, true)
+      }
     },
 
     async connectToArconnect() {
@@ -248,11 +316,15 @@ export default {
       }
     },
 
+    // pendingTransactions() {
+    //   return Object.keys(this.pendingTransactionIds)
+    // },
+
     userTransactions() {
       if (this.userTransactionIds && this.userTransactionIds.length > 0) {
         return this.userTransactionIds.map(id => ({
           id,
-          status: this.validity[id] ? 'success': 'error'
+          status: this.txStatusForId(id)
         }))
       } else {
         return []
@@ -305,6 +377,10 @@ a {
   h2 {
     margin-bottom: 10px;
   }
+}
+
+.generate-many-button-container {
+  margin: 10px;
 }
 
 .notification {
